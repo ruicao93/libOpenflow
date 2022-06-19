@@ -52,6 +52,7 @@ const (
 	NXAST_CONTROLLER2      = 37 // Nicira extended action: controller(userdata=xxx,pause)
 	NXAST_SAMPLE2          = 38 // Nicira extended action: sample, support for exporting egress tunnel
 	NXAST_OUTPUT_TRUNC     = 39 // Nicira extended action: truncate output action
+	NXAST_CLONE            = 42 // Nicira extended action: clone
 	NXAST_CT_CLEAR         = 43 // Nicira extended action: ct_clear
 	NXAST_CT_RESUBMIT      = 44 // Nicira extended action: resubmit to table in ct
 	NXAST_RAW_ENCAP        = 46 // Nicira extended action: encap
@@ -236,6 +237,76 @@ func (a *NXActionConjunction) UnmarshalBinary(data []byte) error {
 	a.ID = binary.BigEndian.Uint32(data[n:])
 
 	return err
+}
+
+func NewNXActionClone() *NXActionClone {
+	a := new(NXActionClone)
+	a.NXActionHeader = NewNxActionHeader(NXAST_CLONE)
+	a.Length = a.NXActionHeader.Len() + 6
+	return a
+}
+
+type NXActionClone struct {
+	*NXActionHeader
+	pad     []byte // 6bytes
+	actions []Action
+}
+
+func (a *NXActionClone) Len() (n uint16) {
+	return a.Length
+}
+
+func (a *NXActionClone) MarshalBinary() (data []byte, err error) {
+	data = make([]byte, int(a.Length))
+	var b []byte
+	n := 0
+
+	b, err = a.NXActionHeader.MarshalBinary()
+	copy(data[n:], b)
+	n += len(b)
+	copy(data[n:], a.pad)
+	n += 6
+	// Marshal nested actions
+	for _, action := range a.actions {
+		actionBytes, err := action.MarshalBinary()
+		if err != nil {
+			return data, errors.New("failed to Marshal ct subActions")
+		}
+		copy(data[n:], actionBytes)
+		n += len(actionBytes)
+	}
+	return
+}
+
+func (a *NXActionClone) UnmarshalBinary(data []byte) error {
+	n := 0
+	a.NXActionHeader = new(NXActionHeader)
+	err := a.NXActionHeader.UnmarshalBinary(data[n:])
+	n += int(a.NXActionHeader.Len())
+	if len(data) < int(a.Len()) {
+		return errors.New("the []byte is too short to unmarshal a full NXActionConnTrack message")
+	}
+	copy(a.pad, data[n:n+6])
+	n += 6
+
+	for n < int(a.Len()) {
+		act, err := DecodeAction(data[n:])
+		if err != nil {
+			return errors.New("failed to decode actions")
+		}
+		a.actions = append(a.actions, act)
+		n += int(act.Len())
+	}
+	a.Length = uint16(n)
+	return err
+}
+
+func (a *NXActionClone) AddAction(actions ...Action) *NXActionClone {
+	for _, act := range actions {
+		a.actions = append(a.actions, act)
+		a.Length += act.Len()
+	}
+	return a
 }
 
 // NXActionConnTrack is NX action for conntrack.
