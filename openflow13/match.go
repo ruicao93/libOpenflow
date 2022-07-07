@@ -135,6 +135,11 @@ func (m *MatchField) MarshalBinary() (data []byte, err error) {
 	data[n] = m.Length
 	n += 1
 
+	if m.Class == OXM_CLASS_EXPERIMENTER {
+		binary.BigEndian.PutUint32(data[n:], m.ExperimenterID)
+		n += 4
+	}
+
 	b, err := m.Value.MarshalBinary()
 	copy(data[n:], b)
 	n += len(b)
@@ -167,7 +172,7 @@ func (m *MatchField) UnmarshalBinary(data []byte) error {
 
 	if m.Class == OXM_CLASS_EXPERIMENTER {
 		experimenterID := binary.BigEndian.Uint32(data[n:])
-		if experimenterID == ONF_EXPERIMENTER_ID {
+		if experimenterID == ONF_EXPERIMENTER_ID || experimenterID == NXOXM_NSH_EXPERIMENTER_ID{
 			n += 4
 			m.ExperimenterID = experimenterID
 		} else {
@@ -491,6 +496,7 @@ const (
 	OXM_CLASS_EXPERIMENTER   = 0xFFFF /* Experimenter class */
 
 	ONF_EXPERIMENTER_ID = 0x4f4e4600 /* ONF Experimenter ID */
+	NXOXM_NSH_EXPERIMENTER_ID = 0x005ad650
 )
 
 const (
@@ -681,6 +687,41 @@ func NewEthDstField(ethDst net.HardwareAddr, ethDstMask *net.HardwareAddr) *Matc
 		f.HasMask = true
 		f.Length += uint8(mask.Len())
 	}
+
+	return f
+}
+
+// ETH_SRC field
+type NSHContextField struct {
+	Value uint32
+}
+
+func (m *NSHContextField) Len() uint16 {
+	return 4
+}
+func (m *NSHContextField) MarshalBinary() (data []byte, err error) {
+	data = make([]byte, 4)
+	binary.BigEndian.PutUint32(data, m.Value)
+	return
+}
+
+func (m *NSHContextField) UnmarshalBinary(data []byte) error {
+	m.Value = binary.BigEndian.Uint32(data)
+	return nil
+}
+
+// Return a MatchField for ethernet src addr
+func NewNSHC1Field(value uint32) *MatchField {
+	f := new(MatchField)
+	f.Class = OXM_CLASS_EXPERIMENTER
+	f.Field = 6
+	f.HasMask = false
+	f.ExperimenterID = NXOXM_NSH_EXPERIMENTER_ID
+
+	contextField := new(NSHContextField)
+	contextField.Value = value
+	f.Value = contextField
+	f.Length = uint8(contextField.Len() + 4)
 
 	return f
 }
