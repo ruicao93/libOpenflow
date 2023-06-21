@@ -126,7 +126,7 @@ func (m *MessageStream) outbound() {
 				m.Shutdown <- true
 			}
 
-			log.Debugf("Sent(%d): %v", len(data), data)
+			log.Tracef("Sent(%d): %v", len(data), data)
 		}
 	}
 }
